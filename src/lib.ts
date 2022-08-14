@@ -237,6 +237,4 @@ export function defineModel<T extends Shape>(shape: T): ModelSchema<T> {
   return modelSchema;
 }
 
-export type Infer<T extends ObjectSchema<any>> = ReturnType<
-  T["_createInstance"]
->;
+export type Infer<T extends ModelSchema<any>> = ReturnType<T["create"]>;

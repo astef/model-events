@@ -1,5 +1,11 @@
 import test from "ava";
-import { defineField, defineModel, defineObject, ModelEvents } from "../lib";
+import {
+  defineField,
+  defineModel,
+  defineObject,
+  Infer,
+  ModelEvents,
+} from "../lib";
 import { createModelEventsAssertion } from "./common";
 
 test("change event", (t) => {
@@ -11,7 +17,10 @@ test("change event", (t) => {
       y: defineField(0),
     }),
   });
-  const model = modelType.create();
+
+  type ModelType = Infer<typeof modelType>;
+
+  const model: ModelType = modelType.create();
   const assertModelEvents = createModelEventsAssertion(model, [
     { eventName: ModelEvents.Value, field: { name: "x", index: 0 }, value: 5 },
     {
