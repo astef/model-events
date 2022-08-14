@@ -1,0 +1,9 @@
+{
+  "extends": "@tsconfig/node16",
+  "include": ["src/**/*.ts"],
+  "compilerOptions": {
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "sourceMap": true
+  }
+}
