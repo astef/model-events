@@ -22,15 +22,16 @@ export type FieldSchema<T> = {
   descriptor?: FieldDescriptor;
 };
 
-export type ObjectSchema<T extends Shape> = {
+export type ObjectSchema<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+> = {
   _initialize: (fieldDispatcher: FieldDispatcher) => void;
 
   _createInstance: () => {
-    [k in keyof T]: T[k] extends ObjectSchema<any>
-      ? ReturnType<T[k]["_createInstance"]>
-      : T[k] extends FieldSchema<any>
-      ? T[k]["_initialValue"]
-      : T[k];
+    readonly [k in keyof TS]: ReturnType<TS[k]["_createInstance"]>;
+  } & {
+    [k in keyof TF]: TF[k]["_initialValue"];
   };
 };
 
@@ -57,11 +58,16 @@ export type Model = ModelEvent<
     snapshot(): void;
   };
 
-export type ModelSchema<T extends Shape> = {
-  create(): ReturnType<ObjectSchema<T>["_createInstance"]> & Model;
+export type ModelSchema<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+> = {
+  create(): ReturnType<ObjectSchema<TS, TF>["_createInstance"]> & Model;
 };
 
-export type Shape = Record<string, FieldSchema<unknown> | ObjectSchema<any>>;
+export type FieldsShape = Record<string, FieldSchema<unknown>>;
+
+export type SubordinatesShape = Record<string, ObjectSchema<any, any>>;
 
 type FieldDispatcher = ModelEvent<
   InternalModelEvents.SnapshotRequest,
@@ -76,26 +82,32 @@ export function defineField<T>(initialValue: T): FieldSchema<T> {
   return { _initialValue: initialValue };
 }
 
-function visitShape(
-  shape: Shape,
-  visitKey?: (key: string) => void,
-  visitField?: (key: string, fieldSchema: FieldSchema<unknown>) => void,
-  visitObject?: (key: string, fieldSchema: ObjectSchema<any>) => void
+function visitSubordinatesShape(
+  shape: SubordinatesShape,
+  visit: (key: string, objectSchema: ObjectSchema<any, any>) => void
 ) {
   for (const key of Object.keys(shape)) {
-    visitKey?.(key);
-    const fieldOrChild = shape[key];
-    if ("_initialValue" in fieldOrChild) {
-      visitField?.(key, fieldOrChild);
-    } else {
-      visitObject?.(key, fieldOrChild);
-    }
+    const objectSchema = shape[key];
+    visit(key, objectSchema);
   }
 }
 
-export function defineObject<T extends Shape>(shape: T): ObjectSchema<T> {
+function visitFieldsShape(
+  shape: FieldsShape,
+  visit: (key: string, fieldsSchema: FieldSchema<unknown>) => void
+) {
+  for (const key of Object.keys(shape)) {
+    const fieldsSchema = shape[key];
+    visit(key, fieldsSchema);
+  }
+}
+
+export function defineObject<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+>(subordinatesShape: TS, fieldsShape: TF): ObjectSchema<TS, TF> {
   let dispatcher: FieldDispatcher | null = null;
-  const objectSchema: ObjectSchema<T> = {
+  const objectSchema: ObjectSchema<TS, TF> = {
     _initialize: (d) => {
       if (dispatcher) {
         throw new Error(
@@ -104,65 +116,69 @@ export function defineObject<T extends Shape>(shape: T): ObjectSchema<T> {
       }
       dispatcher = d;
 
-      visitShape(
-        shape,
-        undefined,
-        (key, fieldSchema) => {
-          fieldSchema.descriptor = dispatcher!._createFieldDescriptor(key);
-        },
-        (_key, objectSchema) => {
-          objectSchema._initialize(dispatcher!);
-        }
-      );
+      visitSubordinatesShape(subordinatesShape, (key, objectSchema) => {
+        objectSchema._initialize(dispatcher!);
+      });
+
+      visitFieldsShape(fieldsShape, (key, fieldSchema) => {
+        fieldSchema.descriptor = dispatcher!._createFieldDescriptor(key);
+      });
     },
     _createInstance: () => {
       if (!dispatcher) {
         throw new Error("Not initialized. Not usable without a model.");
       }
       const res: Record<string, unknown> = {};
-      visitShape(
-        shape,
-        undefined,
-        (key, fieldSchema) => {
-          // intersect field updates
-          let fieldValue = fieldSchema._initialValue;
-          Object.defineProperty(res, key, {
-            get: () => {
-              return fieldValue;
-            },
-            set: (v) => {
-              fieldValue = v;
-              dispatcher!._emitValue(fieldSchema.descriptor!, v);
-            },
-            enumerable: true,
-          });
 
-          // react to snapshot requests
-          dispatcher!.on(InternalModelEvents.SnapshotRequest, () => {
-            dispatcher!._emitSnapshotValue(fieldSchema.descriptor!, fieldValue);
-          });
-        },
-        (key, objectSchema) => {
-          res[key] = objectSchema._createInstance();
-        }
-      );
+      visitSubordinatesShape(subordinatesShape, (key, objectSchema) => {
+        Object.defineProperty(res, key, {
+          value: objectSchema._createInstance(),
+          writable: false,
+        });
+      });
 
-      return res as ReturnType<ObjectSchema<T>["_createInstance"]>;
+      visitFieldsShape(fieldsShape, (key, fieldSchema) => {
+        // intersect field updates
+        let fieldValue = fieldSchema._initialValue;
+        Object.defineProperty(res, key, {
+          get: () => {
+            return fieldValue;
+          },
+          set: (v) => {
+            fieldValue = v;
+            dispatcher!._emitValue(fieldSchema.descriptor!, v);
+          },
+          enumerable: true,
+        });
+
+        // react to snapshot requests
+        dispatcher!.on(InternalModelEvents.SnapshotRequest, () => {
+          dispatcher!._emitSnapshotValue(fieldSchema.descriptor!, fieldValue);
+        });
+      });
+
+      return res as ReturnType<ObjectSchema<TS, TF>["_createInstance"]>;
     },
   };
 
   return objectSchema;
 }
 
-export function defineModel<T extends Shape>(shape: T): ModelSchema<T> {
-  visitShape(shape, (key) => {
+export function defineModel<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+>(subordinatesShape: TS, fieldsShape: TF): ModelSchema<TS, TF> {
+  const checkConflictingKeys = (key: string) => {
     if (["on", "once", "off", "snapshot", "commit"].indexOf(key) >= 0) {
       throw new Error(
         `Top-level shape property name conflicts with Model API: '${key}'`
       );
     }
-  });
-  const rootObjectSchema = defineObject<T>(shape);
+  };
+  visitSubordinatesShape(subordinatesShape, checkConflictingKeys);
+  visitFieldsShape(fieldsShape, checkConflictingKeys);
+
+  const rootObjectSchema = defineObject<TS, TF>(subordinatesShape, fieldsShape);
 
   let lastFieldIndex = -1;
 
@@ -230,11 +246,11 @@ export function defineModel<T extends Shape>(shape: T): ModelSchema<T> {
 
       return obj;
     },
-  } as unknown as ModelSchema<T>;
+  } as unknown as ModelSchema<TS, TF>;
 
   rootObjectSchema._initialize(fieldDispatcher);
 
   return modelSchema;
 }
 
-export type Infer<T extends ModelSchema<any>> = ReturnType<T["create"]>;
+export type Infer<T extends ModelSchema<any, any>> = ReturnType<T["create"]>;

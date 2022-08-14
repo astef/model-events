@@ -10,13 +10,20 @@ import { createModelEventsAssertion } from "./common";
 
 test("change event", (t) => {
   // arrange
-  const modelType = defineModel({
-    s: defineObject({
-      f: defineObject({}),
-      x: defineField(3),
-      y: defineField(0),
-    }),
-  });
+  const modelType = defineModel(
+    {
+      s: defineObject(
+        {
+          f: defineObject({}, {}),
+        },
+        {
+          x: defineField(3),
+          y: defineField(0),
+        }
+      ),
+    },
+    {}
+  );
 
   type ModelType = Infer<typeof modelType>;
 
@@ -36,8 +43,6 @@ test("change event", (t) => {
   model.s.x = 5;
   model.s.y = NaN;
   model.s.x = 8;
-
-  model.s.f = {};
 
   model.commit();
 
