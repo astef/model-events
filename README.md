@@ -1,6 +1,8 @@
 # model-events
 
-This is a TypeScript-first zero-dependency package to generate events from your model field changes.
+<span><a href="https://npmjs.org/package/model-events" title="View this project on NPM"><img src="https://img.shields.io/npm/v/model-events.svg" alt="NPM version" /></a></span>
+
+TypeScript-first zero-dependency package to generate events from your model field changes.
 
 ## Installation
 
