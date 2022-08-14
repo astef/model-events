@@ -2,15 +2,25 @@
   "name": "model-events",
   "version": "1.0.0-alpha.1",
   "description": "Receive events from your model field changes.",
-  "main": "index.js",
+  "main": "dist/lib.js",
+  "files": [
+    "/dist"
+  ],
   "scripts": {
-    "test": "ava"
+    "test": "ava",
+    "build": "tsc"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/astef/model-events.git"
   },
-  "keywords": [],
+  "keywords": [
+    "events",
+    "observable",
+    "event sourcing",
+    "change tracking",
+    "data model"
+  ],
   "author": "Alexander Stefurishin <a.stefurishin@gmail.com>",
   "license": "MIT",
   "bugs": {
