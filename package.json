@@ -1,0 +1,49 @@
+{
+  "name": "model-events",
+  "version": "1.0.0-alpha.1",
+  "description": "Receive events from your model field changes.",
+  "main": "dist/lib.js",
+  "files": [
+    "/dist"
+  ],
+  "scripts": {
+    "test": "ava",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/astef/model-events.git"
+  },
+  "keywords": [
+    "events",
+    "observable",
+    "event sourcing",
+    "change tracking",
+    "data model"
+  ],
+  "author": "Alexander Stefurishin <a.stefurishin@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/astef/model-events/issues"
+  },
+  "homepage": "https://github.com/astef/model-events#readme",
+  "devDependencies": {
+    "@tsconfig/node16": "^1.0.3",
+    "@types/node": "^18.7.3",
+    "ava": "^4.3.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.7.4"
+  },
+  "ava": {
+    "files": [
+      "./src/test/**/*.test.ts"
+    ],
+    "extensions": [
+      "ts"
+    ],
+    "require": [
+      "ts-node/register"
+    ],
+    "failWithoutAssertions": false
+  }
+}
