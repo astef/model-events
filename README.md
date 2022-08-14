@@ -18,15 +18,19 @@ import {
 } from "model-events";
 
 // define your schema just as you define types
-const modelSchema = defineModel({
-  name: defineField("Round 1"),
-  player1: defineObject({
-    score: defineField(0),
-  }),
-  player2: defineObject({
-    score: defineField(0),
-  }),
-});
+const modelSchema = defineModel(
+  {
+    player1: defineObject({
+      score: defineField(0),
+    }),
+    player2: defineObject({
+      score: defineField(0),
+    }),
+  },
+  {
+    name: defineField("Round 1"),
+  }
+);
 
 // and infer your actual type later
 type TwoPlayerGameModel = Infer<typeof modelSchema>;
