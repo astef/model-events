@@ -11,9 +11,24 @@ enum InternalModelEvents {
   SnapshotRequest = "snapshotRequest",
 }
 
-export type FieldDescriptor = {
-  index: number;
+type RelationshipDescriptor = {
+  parent?: RelationshipDescriptor;
   name: string;
+};
+
+export function getFieldPath(field: FieldDescriptor) {
+  const names = [field.name];
+  let current = field.parent;
+  while (current) {
+    names.push(current.name);
+    current = current.parent;
+  }
+  names.reverse();
+  return names.join(".");
+}
+
+export type FieldDescriptor = RelationshipDescriptor & {
+  index: number;
 };
 
 export type FieldSchema<T> = {
@@ -26,7 +41,10 @@ export type ObjectSchema<
   TS extends SubordinatesShape,
   TF extends FieldsShape
 > = {
-  _initialize: (fieldDispatcher: FieldDispatcher) => void;
+  _initialize: (
+    fieldDispatcher: Dispatcher,
+    parent?: RelationshipDescriptor
+  ) => void;
 
   _createInstance: () => {
     readonly [k in keyof TS]: ReturnType<TS[k]["_createInstance"]>;
@@ -69,27 +87,20 @@ export type FieldsShape = Record<string, FieldSchema<unknown>>;
 
 export type SubordinatesShape = Record<string, ObjectSchema<any, any>>;
 
-type FieldDispatcher = ModelEvent<
+type Dispatcher = ModelEvent<
   InternalModelEvents.SnapshotRequest,
   () => void
 > & {
-  _createFieldDescriptor(name: string): FieldDescriptor;
+  _createFieldDescriptor(
+    name: string,
+    parent?: RelationshipDescriptor
+  ): FieldDescriptor;
   _emitValue(field: FieldDescriptor, value: unknown): void;
   _emitSnapshotValue(field: FieldDescriptor, value: unknown): void;
 };
 
 export function defineField<T>(initialValue: T): FieldSchema<T> {
   return { _initialValue: initialValue };
-}
-
-function visitSubordinatesShape(
-  shape: SubordinatesShape,
-  visit: (key: string, objectSchema: ObjectSchema<any, any>) => void
-) {
-  for (const key of Object.keys(shape)) {
-    const objectSchema = shape[key];
-    visit(key, objectSchema);
-  }
 }
 
 function visitFieldsShape(
@@ -102,13 +113,32 @@ function visitFieldsShape(
   }
 }
 
-export function defineObject<
-  TS extends SubordinatesShape,
-  TF extends FieldsShape
->(subordinatesShape: TS, fieldsShape: TF): ObjectSchema<TS, TF> {
-  let dispatcher: FieldDispatcher | null = null;
+function visitShapes(
+  firstShape: SubordinatesShape | FieldsShape,
+  secondShape?: FieldsShape,
+  visitObject?: (key: string, objectSchema: ObjectSchema<any, any>) => void,
+  visitField?: (key: string, fieldsSchema: FieldSchema<unknown>) => void
+) {
+  for (const key of Object.keys(firstShape)) {
+    const schema = firstShape[key];
+    if ("_initialValue" in schema) {
+      visitField?.(key, schema);
+    } else {
+      visitObject?.(key, schema);
+    }
+  }
+  if (secondShape && visitField) {
+    visitFieldsShape(secondShape, visitField);
+  }
+}
+
+function defineObjectImpl<TS extends SubordinatesShape, TF extends FieldsShape>(
+  firstShape: TS | TF,
+  secondShape?: TF
+): ObjectSchema<TS, TF> {
+  let dispatcher: Dispatcher | null = null;
   const objectSchema: ObjectSchema<TS, TF> = {
-    _initialize: (d) => {
+    _initialize: (d, parent) => {
       if (dispatcher) {
         throw new Error(
           "Already initialized. Create a separate object for a different model."
@@ -116,13 +146,19 @@ export function defineObject<
       }
       dispatcher = d;
 
-      visitSubordinatesShape(subordinatesShape, (key, objectSchema) => {
-        objectSchema._initialize(dispatcher!);
-      });
-
-      visitFieldsShape(fieldsShape, (key, fieldSchema) => {
-        fieldSchema.descriptor = dispatcher!._createFieldDescriptor(key);
-      });
+      visitShapes(
+        firstShape,
+        secondShape,
+        (key, objectSchema) => {
+          objectSchema._initialize(dispatcher!, { name: key, parent });
+        },
+        (key, fieldSchema) => {
+          fieldSchema.descriptor = dispatcher!._createFieldDescriptor(
+            key,
+            parent
+          );
+        }
+      );
     },
     _createInstance: () => {
       if (!dispatcher) {
@@ -130,32 +166,35 @@ export function defineObject<
       }
       const res: Record<string, unknown> = {};
 
-      visitSubordinatesShape(subordinatesShape, (key, objectSchema) => {
-        Object.defineProperty(res, key, {
-          value: objectSchema._createInstance(),
-          writable: false,
-        });
-      });
+      visitShapes(
+        firstShape,
+        secondShape,
+        (key, objectSchema) => {
+          Object.defineProperty(res, key, {
+            value: objectSchema._createInstance(),
+            writable: false,
+          });
+        },
+        (key, fieldSchema) => {
+          // intersect field updates
+          let fieldValue = fieldSchema._initialValue;
+          Object.defineProperty(res, key, {
+            get: () => {
+              return fieldValue;
+            },
+            set: (v) => {
+              fieldValue = v;
+              dispatcher!._emitValue(fieldSchema.descriptor!, v);
+            },
+            enumerable: true,
+          });
 
-      visitFieldsShape(fieldsShape, (key, fieldSchema) => {
-        // intersect field updates
-        let fieldValue = fieldSchema._initialValue;
-        Object.defineProperty(res, key, {
-          get: () => {
-            return fieldValue;
-          },
-          set: (v) => {
-            fieldValue = v;
-            dispatcher!._emitValue(fieldSchema.descriptor!, v);
-          },
-          enumerable: true,
-        });
-
-        // react to snapshot requests
-        dispatcher!.on(InternalModelEvents.SnapshotRequest, () => {
-          dispatcher!._emitSnapshotValue(fieldSchema.descriptor!, fieldValue);
-        });
-      });
+          // react to snapshot requests
+          dispatcher!.on(InternalModelEvents.SnapshotRequest, () => {
+            dispatcher!._emitSnapshotValue(fieldSchema.descriptor!, fieldValue);
+          });
+        }
+      );
 
       return res as ReturnType<ObjectSchema<TS, TF>["_createInstance"]>;
     },
@@ -164,10 +203,37 @@ export function defineObject<
   return objectSchema;
 }
 
+export function defineObject<TS extends SubordinatesShape>(
+  subordinatesShape: TS
+): ObjectSchema<TS, {}>;
+export function defineObject<TF extends FieldsShape>(
+  fieldsShape: TF
+): ObjectSchema<{}, TF>;
+export function defineObject<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+>(subordinatesShape: TS, fieldsShape: TF): ObjectSchema<TS, TF>;
+export function defineObject<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+>(firstShape: TS | TF, secondShape?: TF): ObjectSchema<TS, TF> {
+  return defineObjectImpl<TS, TF>(firstShape, secondShape);
+}
+
+export function defineModel<TS extends SubordinatesShape>(
+  subordinatesShape: TS
+): ModelSchema<TS, {}>;
+export function defineModel<TF extends FieldsShape>(
+  fieldsShape: TF
+): ModelSchema<{}, TF>;
 export function defineModel<
   TS extends SubordinatesShape,
   TF extends FieldsShape
->(subordinatesShape: TS, fieldsShape: TF): ModelSchema<TS, TF> {
+>(subordinatesShape: TS, fieldsShape: TF): ModelSchema<TS, TF>;
+export function defineModel<
+  TS extends SubordinatesShape,
+  TF extends FieldsShape
+>(firstShape: TS | TF, secondShape?: TF): ModelSchema<TS, TF> {
   const checkConflictingKeys = (key: string) => {
     if (["on", "once", "off", "snapshot", "commit"].indexOf(key) >= 0) {
       throw new Error(
@@ -175,10 +241,18 @@ export function defineModel<
       );
     }
   };
-  visitSubordinatesShape(subordinatesShape, checkConflictingKeys);
-  visitFieldsShape(fieldsShape, checkConflictingKeys);
 
-  const rootObjectSchema = defineObject<TS, TF>(subordinatesShape, fieldsShape);
+  visitShapes(
+    firstShape,
+    secondShape,
+    checkConflictingKeys,
+    checkConflictingKeys
+  );
+
+  const rootObjectSchema: ObjectSchema<any, any> = defineObjectImpl(
+    firstShape,
+    secondShape
+  );
 
   let lastFieldIndex = -1;
 
@@ -186,7 +260,7 @@ export function defineModel<
 
   const internalEventEmitter = new EventEmitter();
 
-  const fieldDispatcher: FieldDispatcher = {
+  const fieldDispatcher: Dispatcher = {
     _emitValue: (field: FieldDescriptor, value: unknown) => {
       eventEmitter.emit(ModelEvents.Value, field, value);
     },
@@ -197,9 +271,10 @@ export function defineModel<
     once: internalEventEmitter.once.bind(internalEventEmitter),
     off: internalEventEmitter.off.bind(internalEventEmitter),
 
-    _createFieldDescriptor: (name: string) => {
+    _createFieldDescriptor: (name: string, parent?: RelationshipDescriptor) => {
       return {
         name: name,
+        parent: parent,
         index: ++lastFieldIndex,
       };
     },

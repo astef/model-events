@@ -1,5 +1,5 @@
 import assert from "assert";
-import { FieldDescriptor, Model, ModelEvents } from "../lib";
+import { FieldDescriptor, getFieldPath, Model, ModelEvents } from "../lib";
 
 type ValueEventArgs = {
   eventName: string;
@@ -26,18 +26,48 @@ export type EventArgs =
       eventName: ModelEvents.SnapshotCommit;
     });
 
+export type EventMatcher = EventArgs | ((other: EventArgs) => boolean);
+
+export function MatchValueEvent(
+  eventName: ModelEvents.Value | ModelEvents.SnapshotValue,
+  fieldPath: string,
+  value: unknown
+) {
+  return (other: EventArgs) => {
+    return (
+      other.eventName === eventName &&
+      other.value === value &&
+      getFieldPath(other.field) === fieldPath
+    );
+  };
+}
+
+export function MatchCommitEvent(
+  eventName: ModelEvents.Commit | ModelEvents.SnapshotCommit,
+  rev: number
+) {
+  return (other: EventArgs) => {
+    return other.eventName === eventName && other.rev === rev;
+  };
+}
+
 function eventToString(event: EventArgs) {
   return JSON.stringify(event);
 }
 
-function assertEventsEqual(actual: EventArgs, expected: EventArgs) {
-  assert.deepStrictEqual(actual, expected, "Unexpected event.");
+function assertEventsEqual(actual: EventArgs, expected: EventMatcher) {
+  const message = "Unexpected event.";
+  if (typeof expected == "function") {
+    assert.ok(expected(actual), message);
+  } else {
+    assert.deepStrictEqual(actual, expected, message);
+  }
 }
 
 function assertEvent(
   actual: EventArgs,
   eventIndex: number,
-  expectedEvents: EventArgs[]
+  expectedEvents: EventMatcher[]
 ) {
   if (eventIndex == expectedEvents.length) {
     assert.fail(`No more events expected. Received: ${eventToString(actual)}.`);
@@ -48,7 +78,7 @@ function assertEvent(
 
 export function createModelEventsAssertion(
   model: Model,
-  expectedEvents: EventArgs[]
+  expectedEvents: EventMatcher[]
 ) {
   let eventIndex = 0;
 
