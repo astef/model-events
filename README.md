@@ -53,8 +53,6 @@ model.on(ModelEvents.Commit, (rev) => {
 
 // and finally do your computations!
 function play(model: TwoPlayerGameModel) {
-  console.log(`SCORE: ${model.player1.score}`);
-
   for (let i = 1; i <= 10; i++) {
     model.player1.score += 33 % i;
     model.player2.score += model.player1.score % 5;
