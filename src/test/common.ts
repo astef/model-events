@@ -26,28 +26,47 @@ export type EventArgs =
       eventName: ModelEvents.SnapshotCommit;
     });
 
-export type EventMatcher = EventArgs | ((other: EventArgs) => boolean);
+export type EventMatcher = EventArgs | ((actual: EventArgs) => void);
 
-export function MatchValueEvent(
+const UnexpectedEventStr = "Unexpected event.";
+
+function failEventName(actual: string, expected: string): never {
+  assert.fail(
+    `${UnexpectedEventStr}. Expected: ${expected}. Actual: ${actual}.`
+  );
+}
+
+export function valueEventAssertion(
   eventName: ModelEvents.Value | ModelEvents.SnapshotValue,
   fieldPath: string,
   value: unknown
-) {
-  return (other: EventArgs) => {
-    return (
-      other.eventName === eventName &&
-      other.value === value &&
-      getFieldPath(other.field) === fieldPath
+): EventMatcher {
+  return (actual: EventArgs) => {
+    if (actual.eventName !== eventName) {
+      failEventName(actual.eventName, eventName);
+    }
+    assert.deepStrictEqual(
+      {
+        eventName: actual.eventName,
+        value: actual.value,
+        fieldPath: getFieldPath(actual.field),
+      },
+      { eventName, value, fieldPath },
+      UnexpectedEventStr
     );
   };
 }
 
-export function MatchCommitEvent(
+export function commitEventAssertion(
   eventName: ModelEvents.Commit | ModelEvents.SnapshotCommit,
   rev: number
 ) {
-  return (other: EventArgs) => {
-    return other.eventName === eventName && other.rev === rev;
+  return (actual: EventArgs) => {
+    if (actual.eventName !== eventName) {
+      failEventName(actual.eventName, eventName);
+    }
+
+    assert.strictEqual(actual.rev, rev, UnexpectedEventStr);
   };
 }
 
@@ -55,12 +74,11 @@ function eventToString(event: EventArgs) {
   return JSON.stringify(event);
 }
 
-function assertEventsEqual(actual: EventArgs, expected: EventMatcher) {
-  const message = "Unexpected event.";
-  if (typeof expected == "function") {
-    assert.ok(expected(actual), message);
+function assertEventsEqual(actual: EventArgs, eventOrAssert: EventMatcher) {
+  if (typeof eventOrAssert == "function") {
+    eventOrAssert(actual);
   } else {
-    assert.deepStrictEqual(actual, expected, message);
+    assert.deepStrictEqual(actual, eventOrAssert, UnexpectedEventStr);
   }
 }
 

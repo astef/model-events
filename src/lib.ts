@@ -69,11 +69,23 @@ export type Model = ModelEvent<
     (field: FieldDescriptor, value: unknown) => void
   > &
   ModelEvent<ModelEvents.SnapshotCommit, (rev: number) => void> & {
+    /**
+     * Indicate the end of update iteration, increment revision.
+     */
     commit(): void;
     /**
      * send all current field values + commit()
      */
     snapshot(): void;
+
+    /**
+     * Sets the value to the field and raises ModelEvents.Value event normally.
+     *
+     * Dangerous operation. It may break your type system, since there're no run-time typechecks.
+     * @param fieldIndex index of the field to be updated.
+     * @param value the value to be set.
+     */
+    set(fieldIndex: number, value: unknown): void;
   };
 
 export type ModelSchema<
@@ -95,6 +107,7 @@ type Dispatcher = ModelEvent<
     name: string,
     parent?: RelationshipDescriptor
   ): FieldDescriptor;
+  _pushFieldAccessor(getter: () => unknown, setter: (v: unknown) => void): void;
   _emitValue(field: FieldDescriptor, value: unknown): void;
   _emitSnapshotValue(field: FieldDescriptor, value: unknown): void;
 };
@@ -176,18 +189,26 @@ function defineObjectImpl<TS extends SubordinatesShape, TF extends FieldsShape>(
           });
         },
         (key, fieldSchema) => {
-          // intersect field updates
           let fieldValue = fieldSchema._initialValue;
+
+          const fieldGetter = () => {
+            return fieldValue;
+          };
+
+          const fieldSetter = (v: unknown) => {
+            fieldValue = v;
+            dispatcher!._emitValue(fieldSchema.descriptor!, v);
+          };
+
+          // intersect field updates
           Object.defineProperty(res, key, {
-            get: () => {
-              return fieldValue;
-            },
-            set: (v) => {
-              fieldValue = v;
-              dispatcher!._emitValue(fieldSchema.descriptor!, v);
-            },
+            get: fieldGetter,
+            set: fieldSetter,
             enumerable: true,
           });
+
+          // expose field access
+          dispatcher!._pushFieldAccessor(fieldGetter, fieldSetter);
 
           // react to snapshot requests
           dispatcher!.on(InternalModelEvents.SnapshotRequest, () => {
@@ -235,7 +256,7 @@ export function defineModel<
   TF extends FieldsShape
 >(firstShape: TS | TF, secondShape?: TF): ModelSchema<TS, TF> {
   const checkConflictingKeys = (key: string) => {
-    if (["on", "once", "off", "snapshot", "commit"].indexOf(key) >= 0) {
+    if (["on", "once", "off", "snapshot", "commit", "set"].indexOf(key) >= 0) {
       throw new Error(
         `Top-level shape property name conflicts with Model API: '${key}'`
       );
@@ -255,6 +276,7 @@ export function defineModel<
   );
 
   let lastFieldIndex = -1;
+  const fieldSetters: ((v: unknown) => void)[] = [];
 
   const eventEmitter = new EventEmitter();
 
@@ -266,6 +288,10 @@ export function defineModel<
     },
     _emitSnapshotValue: (field: FieldDescriptor, value: unknown) => {
       eventEmitter.emit(ModelEvents.SnapshotValue, field, value);
+    },
+    _pushFieldAccessor: (getter, setter) => {
+      // TODO simplify snapshot operation with getters
+      fieldSetters.push(setter);
     },
     on: internalEventEmitter.on.bind(internalEventEmitter),
     once: internalEventEmitter.once.bind(internalEventEmitter),
@@ -315,6 +341,13 @@ export function defineModel<
       Object.defineProperty(obj, "commit", {
         value: (() => {
           eventEmitter.emit(ModelEvents.Commit, revision++);
+        }).bind(obj),
+        writable: false,
+      });
+
+      Object.defineProperty(obj, "set", {
+        value: ((fieldIndex: number, value: unknown) => {
+          fieldSetters[fieldIndex](value);
         }).bind(obj),
         writable: false,
       });
