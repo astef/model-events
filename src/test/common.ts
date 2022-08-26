@@ -1,72 +1,28 @@
 import assert from "assert";
-import { FieldDescriptor, getFieldPath, Model, ModelEvents } from "../lib";
+import { FieldDescriptor, getFieldPath, Model } from "../lib";
 
-type ValueEventArgs = {
-  eventName: string;
+export type EventArgs = {
   field: FieldDescriptor;
   value: unknown;
 };
-
-type CommitEventArgs = {
-  eventName: string;
-  rev: number;
-};
-
-export type EventArgs =
-  | (ValueEventArgs & {
-      eventName: ModelEvents.Value;
-    })
-  | (CommitEventArgs & {
-      eventName: ModelEvents.Commit;
-    })
-  | (ValueEventArgs & {
-      eventName: ModelEvents.SnapshotValue;
-    })
-  | (CommitEventArgs & {
-      eventName: ModelEvents.SnapshotCommit;
-    });
 
 export type EventMatcher = EventArgs | ((actual: EventArgs) => void);
 
 const UnexpectedEventStr = "Unexpected event.";
 
-function failEventName(actual: string, expected: string): never {
-  assert.fail(
-    `${UnexpectedEventStr}. Expected: ${expected}. Actual: ${actual}.`
-  );
-}
-
 export function valueEventAssertion(
-  eventName: ModelEvents.Value | ModelEvents.SnapshotValue,
   fieldPath: string,
   value: unknown
 ): EventMatcher {
   return (actual: EventArgs) => {
-    if (actual.eventName !== eventName) {
-      failEventName(actual.eventName, eventName);
-    }
     assert.deepStrictEqual(
       {
-        eventName: actual.eventName,
         value: actual.value,
         fieldPath: getFieldPath(actual.field),
       },
-      { eventName, value, fieldPath },
+      { value, fieldPath },
       UnexpectedEventStr
     );
-  };
-}
-
-export function commitEventAssertion(
-  eventName: ModelEvents.Commit | ModelEvents.SnapshotCommit,
-  rev: number
-) {
-  return (actual: EventArgs) => {
-    if (actual.eventName !== eventName) {
-      failEventName(actual.eventName, eventName);
-    }
-
-    assert.strictEqual(actual.rev, rev, UnexpectedEventStr);
   };
 }
 
@@ -105,18 +61,7 @@ export function createModelEventsAssertion(
     eventIndex++;
   };
 
-  model.on(ModelEvents.Value, (field, value) =>
-    onEvent({ eventName: ModelEvents.Value, field, value })
-  );
-  model.on(ModelEvents.Commit, (rev) =>
-    onEvent({ eventName: ModelEvents.Commit, rev })
-  );
-  model.on(ModelEvents.SnapshotValue, (field, value) =>
-    onEvent({ eventName: ModelEvents.SnapshotValue, field, value })
-  );
-  model.on(ModelEvents.SnapshotCommit, (rev) =>
-    onEvent({ eventName: ModelEvents.SnapshotCommit, rev })
-  );
+  model.on("value", (field, value) => onEvent({ field, value }));
 
   return () => {
     assert.strictEqual(

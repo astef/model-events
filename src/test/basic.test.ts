@@ -1,16 +1,6 @@
 import test from "ava";
-import {
-  defineField,
-  defineModel,
-  defineObject,
-  Infer,
-  ModelEvents,
-} from "../lib";
-import {
-  createModelEventsAssertion,
-  commitEventAssertion,
-  valueEventAssertion,
-} from "./common";
+import { defineField, defineModel, defineObject, Infer } from "../lib";
+import { createModelEventsAssertion, valueEventAssertion } from "./common";
 
 test("change event", (t) => {
   // arrange
@@ -38,59 +28,46 @@ test("change event", (t) => {
   const model: ModelType = modelSchema.create();
 
   // mock events
-  let rev = 0;
   const assertModelEvents = createModelEventsAssertion(model, [
-    valueEventAssertion(ModelEvents.Value, "name", "Round 1"),
-    valueEventAssertion(ModelEvents.Value, "player1.name", "Alice"),
-    valueEventAssertion(ModelEvents.Value, "player2.name", "Bob"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 0),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 0),
-    valueEventAssertion(ModelEvents.Value, "winnerName", null),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 1),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 1),
-    valueEventAssertion(ModelEvents.Value, "winnerName", null),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 1),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 2),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Bob"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 2),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 4),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Bob"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 5),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 4),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Alice"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 8),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 7),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Alice"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 13),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 10),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Alice"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 14),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 14),
-    valueEventAssertion(ModelEvents.Value, "winnerName", null),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 20),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 14),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Alice"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.Value, "player1.score", 23),
-    valueEventAssertion(ModelEvents.Value, "player2.score", 17),
-    valueEventAssertion(ModelEvents.Value, "winnerName", "Alice"),
-    commitEventAssertion(ModelEvents.Commit, ++rev),
-    valueEventAssertion(ModelEvents.SnapshotValue, "player1.name", "Alice"),
-    valueEventAssertion(ModelEvents.SnapshotValue, "player1.score", 23),
-    valueEventAssertion(ModelEvents.SnapshotValue, "player2.name", "Bob"),
-    valueEventAssertion(ModelEvents.SnapshotValue, "player2.score", 17),
-    valueEventAssertion(ModelEvents.SnapshotValue, "name", "Round 1"),
-    valueEventAssertion(ModelEvents.SnapshotValue, "winnerName", "Alice"),
-    commitEventAssertion(ModelEvents.SnapshotCommit, ++rev),
+    valueEventAssertion("name", "Round 1"),
+    valueEventAssertion("player1.name", "Alice"),
+    valueEventAssertion("player2.name", "Bob"),
+    valueEventAssertion("player1.score", 0),
+    valueEventAssertion("player2.score", 0),
+    valueEventAssertion("winnerName", null),
+    valueEventAssertion("player1.score", 1),
+    valueEventAssertion("player2.score", 1),
+    valueEventAssertion("winnerName", null),
+    valueEventAssertion("player1.score", 1),
+    valueEventAssertion("player2.score", 2),
+    valueEventAssertion("winnerName", "Bob"),
+    valueEventAssertion("player1.score", 2),
+    valueEventAssertion("player2.score", 4),
+    valueEventAssertion("winnerName", "Bob"),
+    valueEventAssertion("player1.score", 5),
+    valueEventAssertion("player2.score", 4),
+    valueEventAssertion("winnerName", "Alice"),
+    valueEventAssertion("player1.score", 8),
+    valueEventAssertion("player2.score", 7),
+    valueEventAssertion("winnerName", "Alice"),
+    valueEventAssertion("player1.score", 13),
+    valueEventAssertion("player2.score", 10),
+    valueEventAssertion("winnerName", "Alice"),
+    valueEventAssertion("player1.score", 14),
+    valueEventAssertion("player2.score", 14),
+    valueEventAssertion("winnerName", null),
+    valueEventAssertion("player1.score", 20),
+    valueEventAssertion("player2.score", 14),
+    valueEventAssertion("winnerName", "Alice"),
+    valueEventAssertion("player1.score", 23),
+    valueEventAssertion("player2.score", 17),
+    valueEventAssertion("winnerName", "Alice"),
+    valueEventAssertion("player1.name", "Alice"),
+    valueEventAssertion("player1.score", 23),
+    valueEventAssertion("player2.name", "Bob"),
+    valueEventAssertion("player2.score", 17),
+    valueEventAssertion("name", "Round 1"),
+    valueEventAssertion("winnerName", "Alice"),
   ]);
 
   // act
@@ -98,7 +75,6 @@ test("change event", (t) => {
   model.set(4, "Round 1");
   model.set(0, "Alice");
   model.set(2, "Bob");
-  model.commit();
 
   // do updates
   for (let i = 1; i <= 10; i++) {
@@ -112,8 +88,6 @@ test("change event", (t) => {
     } else {
       model.winnerName = model.player2.name;
     }
-
-    model.commit();
   }
 
   // generate snapshot of all fields
