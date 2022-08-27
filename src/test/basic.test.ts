@@ -1,8 +1,17 @@
+import { deepStrictEqual } from "assert";
 import test from "ava";
-import { defineField, defineModel, defineObject, Infer } from "../lib";
+import {
+  defineField,
+  defineModel,
+  defineObject,
+  FieldConfigure,
+  Infer,
+  Model,
+  ModelValueEventHandler,
+} from "../lib";
 import { createModelEventsAssertion, valueEventAssertion } from "./common";
 
-test("change event", (t) => {
+test("basic example", () => {
   // arrange
   // create model
   const unknownStr = "Unknown";
@@ -95,4 +104,59 @@ test("change event", (t) => {
 
   // assert
   assertModelEvents();
+});
+
+test("field configuration", () => {
+  // arrange
+  const testArray: [number, string][] = [];
+
+  const TestArrayWriterConfigName = Symbol("TestArrayWriter");
+
+  const onModelValue: ModelValueEventHandler<unknown> = (field, value) => {
+    const writer = field.configs[TestArrayWriterConfigName];
+    if (typeof writer == "function") {
+      writer(field.index, value);
+    }
+  };
+
+  const TestArrayDump: FieldConfigure<number | string | undefined | null> = (
+    f
+  ) => {
+    f.descriptor.configs[TestArrayWriterConfigName] = (
+      index: number,
+      value: Date | string | undefined | null
+    ) => {
+      testArray.push([index, String(value)]);
+    };
+  };
+
+  const modelSchema = defineModel(
+    {
+      user: defineObject({
+        name: defineField<string>("Alice").with(TestArrayDump),
+        email: defineField<string | undefined>(undefined).with(TestArrayDump),
+        hiddenName: defineField<string | undefined>(undefined),
+      }),
+    },
+    {
+      createdAt: defineField<number | undefined>(undefined).with(TestArrayDump),
+    }
+  );
+
+  // act
+  const model = modelSchema.create();
+  model.on("value", onModelValue);
+
+  model.user.email = "alice@example.com";
+  model.user.hiddenName = "Hidden";
+  model.createdAt = Date.UTC(1999, 12, 31);
+
+  model.off("value", onModelValue);
+  model.user.name = "Wrong";
+
+  // assert
+  deepStrictEqual(testArray, [
+    [1, "alice@example.com"],
+    [3, "949276800000"],
+  ]);
 });

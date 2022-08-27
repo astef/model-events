@@ -4,9 +4,14 @@ enum ModelEvents {
   Value = "value",
 }
 
+export type ModelValueEventHandler<T> = (
+  field: FieldDescriptor,
+  value: T
+) => void;
+
 type RelationshipDescriptor = {
-  parent?: RelationshipDescriptor;
-  name: string;
+  readonly parent?: RelationshipDescriptor;
+  readonly name: string;
 };
 
 export function getFieldPath(field: FieldDescriptor) {
@@ -21,11 +26,20 @@ export function getFieldPath(field: FieldDescriptor) {
 }
 
 export type FieldDescriptor = RelationshipDescriptor & {
-  index: number;
+  readonly index: number;
+  readonly configs: Record<string | symbol, unknown>;
 };
 
+export type FieldConfigure<T> = (
+  field: FieldSchema<T> & { descriptor: FieldDescriptor }
+) => void;
+
 export type FieldSchema<T> = {
-  _initialValue: T;
+  readonly _initialValue: T;
+
+  readonly _configurators: ((fieldSchema: FieldSchema<unknown>) => void)[];
+
+  with(configure: FieldConfigure<T>): FieldSchema<T>;
 
   descriptor?: FieldDescriptor;
 };
@@ -52,10 +66,7 @@ type ModelEvent<N extends string, A extends (...args: any[]) => void> = {
   off(eventName: N, listener: A): void;
 };
 
-export type Model = ModelEvent<
-  "value",
-  (field: FieldDescriptor, value: unknown) => void
-> & {
+export type Model = ModelEvent<"value", ModelValueEventHandler<unknown>> & {
   /**
    * Generate ModelEvents.Value event for all fields.
    */
@@ -84,15 +95,31 @@ export type SubordinatesShape = Record<string, ObjectSchema<any, any>>;
 
 type Dispatcher = {
   _initFieldDescriptor(
+    fieldSchema: FieldSchema<unknown>,
     name: string,
     parent?: RelationshipDescriptor
-  ): FieldDescriptor;
+  ): void;
   _initFieldAccessor(getter: () => unknown, setter: (v: unknown) => void): void;
   _emitValue(field: FieldDescriptor, value: unknown): void;
 };
 
 export function defineField<T>(initialValue: T): FieldSchema<T> {
-  return { _initialValue: initialValue };
+  const fieldSchema: Omit<FieldSchema<T>, "with"> = {
+    _initialValue: initialValue,
+    _configurators: [],
+  };
+  Object.defineProperty(fieldSchema, "with", {
+    value: (configure: FieldConfigure<T>) => {
+      fieldSchema._configurators.push((fieldSchema) => {
+        configure(
+          fieldSchema as FieldSchema<T> & { descriptor: FieldDescriptor }
+        );
+      });
+      return fieldSchema;
+    },
+    writable: false,
+  });
+  return fieldSchema as FieldSchema<T>;
 }
 
 function visitFieldsShape(
@@ -145,10 +172,7 @@ function defineObjectImpl<TS extends SubordinatesShape, TF extends FieldsShape>(
           objectSchema._initialize(dispatcher!, { name: key, parent });
         },
         (key, fieldSchema) => {
-          fieldSchema.descriptor = dispatcher!._initFieldDescriptor(
-            key,
-            parent
-          );
+          dispatcher!._initFieldDescriptor(fieldSchema, key, parent);
         }
       );
     },
@@ -263,14 +287,24 @@ export function defineModel<
       fieldSetters.push(setter);
       fieldGetters.push(getter);
     },
-    _initFieldDescriptor: (name: string, parent?: RelationshipDescriptor) => {
-      const newFieldDescriptor = {
+    _initFieldDescriptor: (
+      field: FieldSchema<unknown>,
+      name: string,
+      parent?: RelationshipDescriptor
+    ) => {
+      const newFieldDescriptor: FieldDescriptor = {
         name: name,
         parent: parent,
         index: fieldDescriptors.length,
+        configs: {},
       };
       fieldDescriptors.push(newFieldDescriptor);
-      return newFieldDescriptor;
+
+      field.descriptor = newFieldDescriptor;
+
+      for (const configure of field._configurators) {
+        configure(field);
+      }
     },
   };
 
