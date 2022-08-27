@@ -34,6 +34,10 @@ export type FieldConfigure<T> = (
   field: FieldSchema<T> & { descriptor: FieldDescriptor }
 ) => void;
 
+export type FieldsShape = Record<string, FieldSchema<unknown>>;
+
+export type SubordinatesShape = Record<string, ObjectSchema<any, any>>;
+
 export type FieldSchema<T> = {
   readonly _initialValue: T;
 
@@ -86,12 +90,9 @@ export type ModelSchema<
   TS extends SubordinatesShape,
   TF extends FieldsShape
 > = {
+  fields: Readonly<FieldDescriptor[]>;
   create(): ReturnType<ObjectSchema<TS, TF>["_createInstance"]> & Model;
 };
-
-export type FieldsShape = Record<string, FieldSchema<unknown>>;
-
-export type SubordinatesShape = Record<string, ObjectSchema<any, any>>;
 
 type Dispatcher = {
   _initFieldDescriptor(
@@ -309,6 +310,7 @@ export function defineModel<
   };
 
   const modelSchema = {
+    fields: fieldDescriptors,
     create: () => {
       const obj = rootObjectSchema._createInstance();
 

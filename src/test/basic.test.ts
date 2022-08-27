@@ -1,21 +1,19 @@
-import { deepStrictEqual } from "assert";
+import { deepStrictEqual, equal } from "assert";
 import test from "ava";
 import {
   defineField,
   defineModel,
   defineObject,
   FieldConfigure,
+  getFieldPath,
   Infer,
-  Model,
   ModelValueEventHandler,
 } from "../lib";
 import { createModelEventsAssertion, valueEventAssertion } from "./common";
 
-test("basic example", () => {
-  // arrange
-  // create model
+function defineTwoPlayerModel() {
   const unknownStr = "Unknown";
-  const modelSchema = defineModel(
+  return defineModel(
     {
       player1: defineObject({
         name: defineField(unknownStr),
@@ -31,6 +29,30 @@ test("basic example", () => {
       winnerName: defineField<null | string>(null),
     }
   );
+}
+
+test("model schema fields", () => {
+  const modelSchema = defineTwoPlayerModel();
+
+  // assert
+  const fieldNames = [
+    "player1.name",
+    "player1.score",
+    "player2.name",
+    "player2.score",
+    "name",
+    "winnerName",
+  ];
+  for (let i = 0; i < modelSchema.fields.length; i++) {
+    equal(modelSchema.fields[i].index, i);
+    equal(getFieldPath(modelSchema.fields[i]), fieldNames[i]);
+  }
+});
+
+test("basic example", () => {
+  // arrange
+  // create model
+  const modelSchema = defineTwoPlayerModel();
 
   type ModelType = Infer<typeof modelSchema>;
 
